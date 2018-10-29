@@ -191,7 +191,7 @@ type Connectors interface {
 	// DeleteGithubConnector deletes a Github connector by its name
 	DeleteGithubConnector(name string) error
 	// CreateGithubAuthRequest creates a new auth request for Github OAuth2 flow
-	CreateGithubAuthRequest(req teleservices.GithubAuthRequest, ttl time.Duration) error
+	CreateGithubAuthRequest(req teleservices.GithubAuthRequest) error
 	// GetGithubAuthRequest retrieves Github auth request by the token
 	GetGithubAuthRequest(stateToken string) (*teleservices.GithubAuthRequest, error)
 }

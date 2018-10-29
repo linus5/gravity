@@ -99,7 +99,7 @@ func (o *OperatorACL) clusterContext(clusterName string) (*users.Context, storag
 // Action checks access to the specified action on the specified resource kind
 func (o *OperatorACL) Action(resourceKind, action string) error {
 	return o.checker.CheckAccessToRule(o.context(), defaults.Namespace,
-		resourceKind, action)
+		resourceKind, action, false)
 }
 
 func (o *OperatorACL) ClusterAction(clusterName, resourceKind, action string) error {
@@ -107,7 +107,7 @@ func (o *OperatorACL) ClusterAction(clusterName, resourceKind, action string) er
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	return o.checker.CheckAccessToRule(ctx, cluster.GetMetadata().Namespace, resourceKind, action)
+	return o.checker.CheckAccessToRule(ctx, cluster.GetMetadata().Namespace, resourceKind, action, false)
 }
 
 func (o *OperatorACL) repoContext(repoName string) *users.Context {
@@ -365,7 +365,7 @@ func (o *OperatorACL) GetSite(siteKey SiteKey) (site *Site, err error) {
 }
 
 func (o *OperatorACL) GetAppInstaller(req AppInstallerRequest) (io.ReadCloser, error) {
-	if err := o.checker.CheckAccessToRule(o.repoContext(req.Application.Repository), teledefaults.Namespace, storage.KindApp, teleservices.VerbRead); err != nil {
+	if err := o.checker.CheckAccessToRule(o.repoContext(req.Application.Repository), teledefaults.Namespace, storage.KindApp, teleservices.VerbRead, false); err != nil {
 		return nil, trace.Wrap(err)
 	}
 	return o.operator.GetAppInstaller(req)
@@ -782,7 +782,7 @@ func (o *OperatorACL) SignTLSKey(req TLSSignRequest) (*TLSSignResponse, error) {
 		return nil, trace.Wrap(err)
 	}
 
-	err = o.checker.CheckAccessToRule(ctx, cluster.GetMetadata().Namespace, storage.KindCluster, storage.VerbConnect)
+	err = o.checker.CheckAccessToRule(ctx, cluster.GetMetadata().Namespace, storage.KindCluster, storage.VerbConnect, false)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}

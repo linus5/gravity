@@ -29,7 +29,6 @@ import (
 	"github.com/gravitational/gravity/lib/constants"
 	"github.com/gravitational/gravity/lib/defaults"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/gravitational/teleport/lib/auth"
 	teleauth "github.com/gravitational/teleport/lib/auth"
 	"github.com/gravitational/teleport/lib/auth/native"
@@ -38,6 +37,7 @@ import (
 	"github.com/gravitational/teleport/lib/sshutils"
 	"github.com/gravitational/teleport/lib/utils"
 	"github.com/gravitational/trace"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -54,7 +54,7 @@ func newTeleportProxyService(cfg teleportProxyConfig) (*teleportProxyService, er
 }
 
 type teleportProxyConfig struct {
-	AuthClient        *auth.TunClient
+	AuthClient        *auth.Client
 	ReverseTunnelAddr utils.NetAddr
 	ProxyHost         string
 	AuthorityDomain   string
@@ -62,7 +62,7 @@ type teleportProxyConfig struct {
 
 type teleportProxyService struct {
 	sync.Mutex
-	authClient  *auth.TunClient
+	authClient  *auth.Client
 	cfg         teleportProxyConfig
 	authMethods []ssh.AuthMethod
 	ctx         context.Context
@@ -102,7 +102,10 @@ func (t *teleportProxyService) getAuthMethods() []ssh.AuthMethod {
 }
 
 func (t *teleportProxyService) initAuthMethods(certGeneratedCh chan<- struct{}) error {
-	certAuthority := native.New()
+	certAuthority, err := native.New()
+	if err != nil {
+		return trace.Wrap(err)
+	}
 	priv, pub, err := certAuthority.GenerateKeyPair("")
 	if err != nil {
 		return trace.Wrap(err)
@@ -239,7 +242,7 @@ func (t *teleportProxyService) TrustCertAuthority(cert services.CertAuthority) e
 	return nil
 }
 
-func (t *teleportProxyService) hostCertChecker() (teleclient.HostKeyCallback, error) {
+func (t *teleportProxyService) hostCertChecker() (ssh.HostKeyCallback, error) {
 	authorities, err := t.authClient.GetCertAuthorities(services.HostCA, false)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -279,7 +282,8 @@ func (t *teleportProxyService) GetProxyClient(ctx context.Context, siteName stri
 		AuthMethods:     t.getAuthMethods(),
 		SkipLocalAuth:   true,
 		HostLogin:       defaults.SSHUser,
-		ProxyHostPort:   t.cfg.ProxyHost,
+		WebProxyAddr:    t.cfg.ProxyHost,
+		SSHProxyAddr:    t.cfg.ProxyHost,
 		SiteName:        siteName,
 		HostKeyCallback: hostChecker,
 		Env: map[string]string{
@@ -294,7 +298,7 @@ func (t *teleportProxyService) GetProxyClient(ctx context.Context, siteName stri
 	}
 
 	// query a proxy for server list
-	proxyClient, err := teleportClient.ConnectToProxy()
+	proxyClient, err := teleportClient.ConnectToProxy(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -343,7 +347,8 @@ func (t *teleportProxyService) ExecuteCommand(ctx context.Context, siteName, nod
 		AuthMethods:     t.getAuthMethods(),
 		SkipLocalAuth:   true,
 		HostLogin:       defaults.SSHUser,
-		ProxyHostPort:   t.cfg.ProxyHost,
+		WebProxyAddr:    t.cfg.ProxyHost,
+		SSHProxyAddr:    t.cfg.ProxyHost,
 		HostPort:        targetPort,
 		Host:            targetHost,
 		Stdout:          out,

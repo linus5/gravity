@@ -150,7 +150,7 @@ func rpcAgentDeploy(env *localenv.LocalEnvironment, leaderParams []string) error
 		return trace.Wrap(err, "failed to create a teleport client")
 	}
 
-	proxy, err := teleportClient.ConnectToProxy()
+	proxy, err := teleportClient.ConnectToProxy(ctx)
 	if err != nil {
 		return trace.Wrap(err, "failed to connect to teleport proxy")
 	}

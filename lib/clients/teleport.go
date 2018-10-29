@@ -17,6 +17,7 @@ limitations under the License.
 package clients
 
 import (
+	"context"
 	"net"
 
 	"github.com/gravitational/gravity/lib/constants"
@@ -46,7 +47,8 @@ func Teleport(operator ops.Operator, proxyHost string) (*client.TeleportClient, 
 		AuthMethods:     auth,
 		SkipLocalAuth:   true,
 		HostLogin:       defaults.SSHUser,
-		ProxyHostPort:   proxyHost,
+		WebProxyAddr:    proxyHost,
+		SSHProxyAddr:    proxyHost,
 		SiteName:        cluster.Domain,
 		HostKeyCallback: sshHostCheckerAcceptAny,
 		Env: map[string]string{
@@ -56,16 +58,20 @@ func Teleport(operator ops.Operator, proxyHost string) (*client.TeleportClient, 
 }
 
 // TeleportProxy returns a new teleport proxy client
-func TeleportProxy(operator ops.Operator, proxyHost string) (*client.ProxyClient, error) {
+func TeleportProxy(ctx context.Context, operator ops.Operator, proxyHost string) (*client.ProxyClient, error) {
 	teleport, err := Teleport(operator, proxyHost)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	return teleport.ConnectToProxy()
+	return teleport.ConnectToProxy(ctx)
 }
 
 func authenticateWithTeleport(operator ops.Operator, cluster *ops.Site) ([]ssh.AuthMethod, error) {
-	private, public, err := native.New().GenerateKeyPair("")
+	keygen, err := native.New()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	private, public, err := keygen.GenerateKeyPair("")
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}

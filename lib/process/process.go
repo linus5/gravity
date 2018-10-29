@@ -324,11 +324,11 @@ func New(ctx context.Context, cfg processconfig.Config, tcfg telecfg.FileConfig)
 }
 
 // Init initializes the process internal services but does not start them
-func (p *Process) Init() error {
+func (p *Process) Init(ctx context.Context) error {
 	if err := p.initAccount(); err != nil {
 		return trace.Wrap(err)
 	}
-	if err := p.initService(); err != nil {
+	if err := p.initService(ctx); err != nil {
 		return trace.Wrap(err)
 	}
 	return nil
@@ -340,12 +340,12 @@ func (p *Process) Start() (err error) {
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	p.Supervisor.RegisterFunc(func() (err error) {
+	p.Supervisor.RegisterFunc("gravity.service", func() (err error) {
 		defer p.Supervisor.BroadcastEvent(service.Event{
 			Name:    constants.ServiceStartedEvent,
 			Payload: &ServiceStartedEvent{Error: err},
 		})
-		if err = p.Init(); err != nil {
+		if err = p.Init(p.context); err != nil {
 			return trace.Wrap(err)
 		}
 		if err = p.Serve(); err != nil {
@@ -602,7 +602,7 @@ func (p *Process) startElection() error {
 
 	gravityLeadersC := make(chan string)
 	p.leader.AddWatch(gravityLeaderKey, defaults.ElectionTerm/3, gravityLeadersC)
-	p.RegisterFunc(func() error {
+	p.RegisterFunc("gravity.election", func() error {
 		p.Infof("Start watching gravity leaders.")
 		for leaderID := range gravityLeadersC {
 			oldLeaderID := p.setLeader(leaderID)
@@ -881,17 +881,16 @@ func (p *Process) APIAdvertiseHost() string {
 	return host
 }
 
-func (p *Process) initService() (err error) {
+func (p *Process) initService(ctx context.Context) (err error) {
 	eventC := make(chan service.Event)
-	cancelC := make(chan struct{})
-	p.WaitForEvent(service.AuthIdentityEvent, eventC, cancelC)
+	p.WaitForEvent(ctx, service.AuthIdentityEvent, eventC)
 	event := <-eventC
 	p.Infof("Received %v.", &event)
 	conn, ok := (event.Payload).(*service.Connector)
 	if !ok {
 		return trace.BadParameter("unsupported Connector type: %T", event.Payload)
 	}
-	p.WaitForEvent(service.ProxyReverseTunnelServerEvent, eventC, cancelC)
+	p.WaitForEvent(ctx, service.ProxyReverseTunnelReady, eventC)
 	event = <-eventC
 	p.Infof("Received %v.", &event)
 	reverseTunnel, ok := (event.Payload).(reversetunnel.Server)
@@ -900,7 +899,7 @@ func (p *Process) initService() (err error) {
 	}
 	p.reverseTunnel = reverseTunnel
 
-	p.WaitForEvent(service.ProxyIdentityEvent, eventC, cancelC)
+	p.WaitForEvent(ctx, service.ProxyIdentityEvent, eventC)
 	event = <-eventC
 	p.Infof("Received %v.", &event)
 
@@ -1311,7 +1310,7 @@ func (p *Process) ServeHealth() error {
 	healthMux := &httprouter.Router{}
 	healthMux.HandlerFunc("GET", "/readyz", p.ReportReadiness)
 	healthMux.HandlerFunc("GET", "/healthz", p.ReportHealth)
-	p.RegisterFunc(func() error {
+	p.RegisterFunc("gravity.healthz", func() error {
 		p.Infof("Start healthcheck server on %v.", p.cfg.HealthAddr)
 		return trace.Wrap(http.ListenAndServe(p.cfg.HealthAddr.Addr, healthMux))
 	})
@@ -1400,14 +1399,14 @@ func (p *Process) initMux(ctx context.Context) error {
 //
 // The listener is restarted when a certificate change event is detected.
 func (p *Process) ServeLocal(ctx context.Context, mux http.Handler, addr string) error {
-	p.RegisterFunc(func() error {
+	p.RegisterFunc("gravity.listener", func() error {
 		webListener, err := p.startListening(mux, addr)
 		if err != nil {
 			return trace.Wrap(err)
 		}
 
 		eventsCh := make(chan service.Event)
-		p.WaitForEvent(constants.ClusterCertificateUpdatedEvent, eventsCh, nil)
+		p.WaitForEvent(ctx, constants.ClusterCertificateUpdatedEvent, eventsCh)
 
 		for {
 			select {

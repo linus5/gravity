@@ -74,7 +74,7 @@ func updateTrigger(
 		return trace.Wrap(err, "failed to create a teleport client")
 	}
 
-	proxy, err := teleportClient.ConnectToProxy()
+	proxy, err := teleportClient.ConnectToProxy(context.TODO())
 	if err != nil {
 		return trace.Wrap(err, "failed to connect to teleport proxy")
 	}

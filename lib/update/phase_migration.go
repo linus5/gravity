@@ -91,7 +91,7 @@ func (p *phaseMigrateLinks) Execute(context.Context) error {
 		return trace.Wrap(err)
 	}
 	p.Debugf("creating trusted cluster: %s", trustedCluster)
-	err = p.Backend.UpsertTrustedCluster(trustedCluster)
+	_, err = p.Backend.UpsertTrustedCluster(trustedCluster)
 	if err != nil {
 		return trace.Wrap(err)
 	}

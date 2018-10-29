@@ -1113,7 +1113,7 @@ func (s *site) configureTeleportMaster(ctx *operationContext, secrets *teleportS
 		fileConf.SSH.Labels[key] = val
 	}
 
-	fileConf.AdvertiseIP = net.ParseIP(master.AdvertiseIP)
+	fileConf.AdvertiseIP = net.ParseIP(master.AdvertiseIP).String()
 	fileConf.Global.NodeName = master.FQDN(s.domainName)
 
 	// turn on auth service
@@ -1207,7 +1207,7 @@ func (s *site) configureTeleportNode(ctx *operationContext, masterIP string, nod
 	// for now set to 365 days
 	fileConf.CachePolicy.TTL = fmt.Sprintf("%v", 365*24*time.Hour)
 
-	fileConf.AdvertiseIP = net.ParseIP(node.AdvertiseIP)
+	fileConf.AdvertiseIP = net.ParseIP(node.AdvertiseIP).String()
 	fileConf.Global.NodeName = node.FQDN(s.domainName)
 
 	// turn off auth service and proxy, turn on SSH
@@ -1358,12 +1358,15 @@ func configureTeleportLabels(node *ProvisionedServer, operation *ops.SiteOperati
 }
 
 func (s *site) initTeleportCertAuthority() (*teleportSecrets, error) {
-	hostPriv, hostPub, err := native.New().GenerateKeyPair("")
+	keygen, err := native.New()
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-
-	userPriv, userPub, err := native.New().GenerateKeyPair("")
+	hostPriv, hostPub, err := keygen.GenerateKeyPair("")
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	userPriv, userPub, err := keygen.GenerateKeyPair("")
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -1407,8 +1410,10 @@ func (s *site) configureTeleportKeyPair(secrets *teleportSecrets, server *Provis
 
 	log.Infof("%v going to generate token for %v", s, unqualifiedName)
 
-	auth := native.New()
-
+	auth, err := native.New()
+	if err != nil {
+		return trace.Wrap(err)
+	}
 	hostPriv, hostPub, err := auth.GenerateKeyPair("")
 	if err != nil {
 		return trace.Wrap(err)

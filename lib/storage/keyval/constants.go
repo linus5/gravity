@@ -72,6 +72,7 @@ const (
 	planP                       = "plan"
 	trustedClustersP            = "trustedclusters"
 	tunnelConnectionsP          = "tunnelconnections"
+	remoteClustersP             = "remoteclusters"
 	systemP                     = "system"
 	dnsP                        = "dns"
 

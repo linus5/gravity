@@ -111,18 +111,22 @@ func isUnmarkedInternalRole(name string) bool {
 }
 
 func (r *RoleV2) V3() *teleservices.RoleV3 {
+	nodeLabels := make(teleservices.Labels)
+	for k, v := range r.Spec.NodeLabels {
+		nodeLabels[k] = teleutils.Strings([]string{v})
+	}
 	role := &teleservices.RoleV3{
 		Kind:     teleservices.KindRole,
 		Version:  teleservices.V3,
 		Metadata: r.Metadata,
 		Spec: teleservices.RoleSpecV3{
 			Options: teleservices.RoleOptions{
-				teleservices.MaxSessionTTL: r.Spec.MaxSessionTTL,
+				MaxSessionTTL: r.Spec.MaxSessionTTL,
 			},
 			Allow: teleservices.RoleConditions{
 				Logins:     r.Spec.Logins,
 				Namespaces: r.Spec.Namespaces,
-				NodeLabels: r.Spec.NodeLabels,
+				NodeLabels: nodeLabels,
 			},
 		},
 	}
@@ -142,7 +146,7 @@ func (r *RoleV2) V3() *teleservices.RoleV3 {
 
 	// translate old v2 agent forwarding to a v3 option
 	if r.Spec.ForwardAgent {
-		role.Spec.Options[teleservices.ForwardAgent] = true
+		role.Spec.Options.ForwardAgent = teleservices.NewBool(true)
 	}
 
 	// translate old v2 resources to v3 rules
