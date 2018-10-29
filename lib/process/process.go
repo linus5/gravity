@@ -406,6 +406,11 @@ func (p *Process) KubeClient() *kubernetes.Clientset {
 	return p.client
 }
 
+// Context returns the process context
+func (p *Process) Context() context.Context {
+	return p.context
+}
+
 // Config returns the process config
 func (p *Process) Config() *processconfig.Config {
 	return &p.cfg
