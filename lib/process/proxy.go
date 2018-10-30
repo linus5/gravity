@@ -42,6 +42,7 @@ import (
 )
 
 func newTeleportProxyService(cfg teleportProxyConfig) (*teleportProxyService, error) {
+	log.Debugf("Creating teleportProxyService with %#v.", cfg)
 	proxy := &teleportProxyService{
 		cfg:        cfg,
 		authClient: cfg.AuthClient,
@@ -56,7 +57,8 @@ func newTeleportProxyService(cfg teleportProxyConfig) (*teleportProxyService, er
 type teleportProxyConfig struct {
 	AuthClient        *auth.Client
 	ReverseTunnelAddr utils.NetAddr
-	ProxyHost         string
+	WebProxyAddr      string
+	SSHProxyAddr      string
 	AuthorityDomain   string
 }
 
@@ -282,8 +284,8 @@ func (t *teleportProxyService) GetProxyClient(ctx context.Context, siteName stri
 		AuthMethods:     t.getAuthMethods(),
 		SkipLocalAuth:   true,
 		HostLogin:       defaults.SSHUser,
-		WebProxyAddr:    t.cfg.ProxyHost,
-		SSHProxyAddr:    t.cfg.ProxyHost,
+		WebProxyAddr:    t.cfg.WebProxyAddr,
+		SSHProxyAddr:    t.cfg.SSHProxyAddr,
 		SiteName:        siteName,
 		HostKeyCallback: hostChecker,
 		Env: map[string]string{
@@ -347,8 +349,8 @@ func (t *teleportProxyService) ExecuteCommand(ctx context.Context, siteName, nod
 		AuthMethods:     t.getAuthMethods(),
 		SkipLocalAuth:   true,
 		HostLogin:       defaults.SSHUser,
-		WebProxyAddr:    t.cfg.ProxyHost,
-		SSHProxyAddr:    t.cfg.ProxyHost,
+		WebProxyAddr:    t.cfg.WebProxyAddr,
+		SSHProxyAddr:    t.cfg.SSHProxyAddr,
 		HostPort:        targetPort,
 		Host:            targetHost,
 		Stdout:          out,

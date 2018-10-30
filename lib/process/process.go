@@ -71,11 +71,13 @@ import (
 	"github.com/gravitational/license/authority"
 	"github.com/gravitational/roundtrip"
 	telelib "github.com/gravitational/teleport/lib"
+	teleauth "github.com/gravitational/teleport/lib/auth"
 	telecfg "github.com/gravitational/teleport/lib/config"
 	teledefaults "github.com/gravitational/teleport/lib/defaults"
 	telemodules "github.com/gravitational/teleport/lib/modules"
 	"github.com/gravitational/teleport/lib/reversetunnel"
 	"github.com/gravitational/teleport/lib/service"
+	teleservice "github.com/gravitational/teleport/lib/service"
 	teleservices "github.com/gravitational/teleport/lib/services"
 	teleutils "github.com/gravitational/teleport/lib/utils"
 	teleweb "github.com/gravitational/teleport/lib/web"
@@ -886,6 +888,22 @@ func (p *Process) APIAdvertiseHost() string {
 	return host
 }
 
+func (p *Process) teleportProcess() *teleservice.TeleportProcess {
+	return p.Supervisor.(*teleservice.TeleportProcess)
+}
+
+func (p *Process) newAuthClient(authServers []teleutils.NetAddr, identity *teleauth.Identity) (*teleauth.Client, error) {
+	tlsConfig, err := identity.TLSConfig(p.teleportProcess().Config.CipherSuites)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	if p.teleportProcess().Config.ClientTimeout != 0 {
+		return teleauth.NewTLSClient(authServers, tlsConfig,
+			teleauth.ClientTimeout(p.teleportProcess().Config.ClientTimeout))
+	}
+	return teleauth.NewTLSClient(authServers, tlsConfig)
+}
+
 func (p *Process) initService(ctx context.Context) (err error) {
 	eventC := make(chan service.Event)
 	p.WaitForEvent(ctx, service.AuthIdentityEvent, eventC)
@@ -932,18 +950,25 @@ func (p *Process) initService(ctx context.Context) (err error) {
 		return trace.Wrap(err)
 	}
 
-	p.identity.SetAuth(conn.Client)
+	authClient, err := p.newAuthClient(p.teleportConfig.AuthServers, conn.ClientIdentity)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	p.identity.SetAuth(authClient)
 
 	proxyConfig, err := p.proxyConfig()
 	if err != nil {
 		return trace.Wrap(err)
 	}
 
-	proxyHost := fmt.Sprintf("%v:%v,%v", proxyConfig.host, proxyConfig.webPort, proxyConfig.sshPort)
+	sshProxyHost := fmt.Sprintf("%v:%v", proxyConfig.host, proxyConfig.sshPort)
+	webProxyHost := fmt.Sprintf("%v:%v", proxyConfig.host, proxyConfig.webPort)
 	teleportProxy, err := newTeleportProxyService(teleportProxyConfig{
-		AuthClient:        conn.Client,
+		AuthClient:        authClient,
 		ReverseTunnelAddr: proxyConfig.reverseTunnelAddr,
-		ProxyHost:         proxyHost,
+		WebProxyAddr:      webProxyHost,
+		SSHProxyAddr:      sshProxyHost,
 		// TODO(klizhentas) this means that it will only work if auth server
 		// and portal are on the same node, this is a bug
 		// to fix that we need to make sure that Auth server provides it's authority
@@ -1241,7 +1266,7 @@ func (p *Process) initService(ctx context.Context) (err error) {
 
 	p.handlers.WebAPI, err = web.NewAPI(web.Config{
 		Identity:         p.identity,
-		Auth:             conn.Client,
+		Auth:             authClient,
 		PrefixURL:        fmt.Sprintf("https://%v/portalapi/v1", p.cfg.Pack.GetAddr().Addr),
 		WebAuthenticator: p.handlers.WebProxy.GetHandler().AuthenticateRequest,
 		Applications:     applications,
@@ -1253,7 +1278,7 @@ func (p *Process) initService(ctx context.Context) (err error) {
 		Clients:          clusterClients,
 		Converter:        ui.NewConverter(),
 		Mode:             p.mode,
-		ProxyHost:        proxyHost,
+		ProxyHost:        sshProxyHost,
 		ServiceUser:      *p.cfg.ServiceUser,
 	})
 
@@ -1361,7 +1386,7 @@ func (p *Process) proxyConfig() (*proxyConfig, error) {
 		return nil, trace.Wrap(err)
 	}
 
-	_, proxyWebPort, err := net.SplitHostPort(p.teleportConfig.Proxy.SSHAddr.Addr)
+	_, proxyWebPort, err := net.SplitHostPort(p.teleportConfig.Proxy.WebAddr.Addr)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}

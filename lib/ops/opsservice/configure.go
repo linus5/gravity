@@ -1087,8 +1087,6 @@ func (s *site) configureTeleportMaster(ctx *operationContext, secrets *teleportS
 			})
 	}
 
-	dynamicConfig := true
-	fileConf.Auth.DynamicConfig = &dynamicConfig
 	fileConf.DataDir = defaults.InGravity("site/teleport")
 	fileConf.Storage.Type = teleetcd.GetName()
 	secretsDir := defaults.InGravity(defaults.SecretsDir)

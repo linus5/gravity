@@ -29,6 +29,7 @@ import (
 	"github.com/gravitational/gravity/lib/storage/keyval"
 	"github.com/gravitational/gravity/lib/users"
 
+	"github.com/gravitational/teleport/lib/backend"
 	telecfg "github.com/gravitational/teleport/lib/config"
 	teleservices "github.com/gravitational/teleport/lib/services"
 	teleutils "github.com/gravitational/teleport/lib/utils"
@@ -85,6 +86,10 @@ func WizardTeleportConfig(clusterName, stateDir string) *telecfg.FileConfig {
 			Logger: telecfg.Log{
 				Output:   "stderr",
 				Severity: "warn",
+			},
+			Storage: backend.Config{
+				Type:   "bolt", // TODO change to dir backend
+				Params: make(backend.Params),
 			},
 			AuthServers: []string{fmt.Sprintf("localhost:%v", defaults.WizardAuthServerPort)},
 		},
