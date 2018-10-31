@@ -583,6 +583,7 @@
   version = "v1.0.1"
 
 [[projects]]
+  branch = "roman/3.0/labels"
   name = "github.com/gravitational/teleport"
   packages = [
     ".",
@@ -636,8 +637,7 @@
     "lib/web",
     "lib/web/ui"
   ]
-  revision = "4ff9a7b07b78db916d9ac5c07fd6d9f7f5dc2176"
-  version = "v3.0.1"
+  revision = "6096d7054d077cd6cfb98078ca079112ba0b4dc8"
 
 [[projects]]
   name = "github.com/gravitational/trace"
@@ -1560,6 +1560,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a6133ca4f37599be9bb7450156779fe21827234aaa8c909d0db77d520ea57aae"
+  inputs-digest = "56da34c44b009b3a295abdfa6081cde866a971aa57498d58d11f1165d004faf2"
   solver-name = "gps-cdcl"
   solver-version = 1

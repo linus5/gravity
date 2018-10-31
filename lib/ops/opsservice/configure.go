@@ -1190,6 +1190,12 @@ func (s *site) configureTeleportNode(ctx *operationContext, masterIP string, nod
 
 	fileConf.DataDir = node.InGravity("teleport")
 
+	if s.service.cfg.Devmode {
+		fileConf.Logger.Severity = "debug"
+	} else {
+		fileConf.Logger.Severity = "info"
+	}
+
 	fileConf.AuthServers = []string{fmt.Sprintf("%v:3025", masterIP)}
 	fileConf.AuthToken = joinToken.Token
 
