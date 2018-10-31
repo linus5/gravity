@@ -1114,9 +1114,16 @@ func (s *site) configureTeleportMaster(ctx *operationContext, secrets *teleportS
 	fileConf.AdvertiseIP = net.ParseIP(master.AdvertiseIP).String()
 	fileConf.Global.NodeName = master.FQDN(s.domainName)
 
+	joinToken, err := s.service.GetExpandToken(s.key)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
 	// turn on auth service
 	fileConf.Auth.EnabledFlag = "yes"
 	fileConf.Auth.ClusterName = telecfg.ClusterName(s.domainName)
+	fileConf.Auth.StaticTokens = telecfg.StaticTokens{
+		telecfg.StaticToken(fmt.Sprintf("node:%v", joinToken.Token))}
 
 	// turn on proxy
 	fileConf.Proxy.EnabledFlag = "yes"
@@ -1174,11 +1181,17 @@ func (s *site) configureTeleportNode(ctx *operationContext, masterIP string, nod
 		return trace.Wrap(err)
 	}
 
+	joinToken, err := s.service.GetExpandToken(s.key)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
 	fileConf := &telecfg.FileConfig{}
 
 	fileConf.DataDir = node.InGravity("teleport")
 
 	fileConf.AuthServers = []string{fmt.Sprintf("%v:3025", masterIP)}
+	fileConf.AuthToken = joinToken.Token
 
 	fileConf.SSH.Labels = map[string]string{}
 

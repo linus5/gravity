@@ -379,12 +379,13 @@ func (o *Operator) GetExpandToken(key ops.SiteKey) (*storage.ProvisioningToken, 
 	}
 
 	for _, token := range tokens {
-		if token.Type == storage.ProvisioningTokenTypeExpand {
+		// return long-lived join token
+		if token.Type == storage.ProvisioningTokenTypeExpand && token.Expires.IsZero() {
 			return &token, nil
 		}
 	}
 
-	return nil, trace.NotFound("expand token for %v not found", key.SiteDomain)
+	return nil, trace.NotFound("join token for %v not found", key.SiteDomain)
 }
 
 func (o *Operator) GetTrustedClusterToken(key ops.SiteKey) (storage.Token, error) {

@@ -178,7 +178,8 @@ ignored = [
 
 [[constraint]]
   name = "github.com/gravitational/teleport"
-  version = "=v3.0.1"
+  branch = "roman/3.0/labels"
+#  version = "=v3.0.1"
 
 [[constraint]]
   branch = "master"
