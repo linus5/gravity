@@ -19,19 +19,18 @@ package clients
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"net"
 
 	"github.com/gravitational/gravity/lib/constants"
 	"github.com/gravitational/gravity/lib/defaults"
 	"github.com/gravitational/gravity/lib/ops"
+	"github.com/gravitational/gravity/lib/utils"
 
 	"github.com/gravitational/teleport/lib/auth/native"
 	"github.com/gravitational/teleport/lib/client"
 	teledefaults "github.com/gravitational/teleport/lib/defaults"
 	"github.com/gravitational/teleport/lib/sshutils"
-	teleutils "github.com/gravitational/teleport/lib/utils"
 
 	"github.com/cloudflare/cfssl/csr"
 	"github.com/gravitational/license/authority"
@@ -105,15 +104,10 @@ func authenticateWithTeleport(operator ops.Operator, cluster *ops.Site) ([]ssh.A
 	if err != nil {
 		return nil, nil, trace.Wrap(err)
 	}
-	tlsConfig := teleutils.TLSConfig(nil)
-	tlsCert, err := tls.X509KeyPair(response.TLSCert, key)
+	tlsConfig, err := utils.MakeTLSClientConfig(response.TLSCert, key, response.CACert)
 	if err != nil {
 		return nil, nil, trace.Wrap(err)
 	}
-	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(response.CACert)
-	tlsConfig.Certificates = []tls.Certificate{tlsCert}
-	tlsConfig.RootCAs = pool
 	return []ssh.AuthMethod{ssh.PublicKeys(signer)}, tlsConfig, nil
 }
 

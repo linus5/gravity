@@ -19,7 +19,6 @@ package process
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io"
 	"net"
@@ -31,6 +30,7 @@ import (
 	"github.com/cloudflare/cfssl/csr"
 	"github.com/gravitational/gravity/lib/constants"
 	"github.com/gravitational/gravity/lib/defaults"
+	"github.com/gravitational/gravity/lib/utils"
 	"github.com/gravitational/license/authority"
 
 	"github.com/gravitational/teleport/lib/auth"
@@ -39,7 +39,6 @@ import (
 	teleclient "github.com/gravitational/teleport/lib/client"
 	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/sshutils"
-	"github.com/gravitational/teleport/lib/utils"
 	teleutils "github.com/gravitational/teleport/lib/utils"
 	"github.com/gravitational/trace"
 	log "github.com/sirupsen/logrus"
@@ -61,7 +60,7 @@ func newTeleportProxyService(cfg teleportProxyConfig) (*teleportProxyService, er
 
 type teleportProxyConfig struct {
 	AuthClient        *auth.Client
-	ReverseTunnelAddr utils.NetAddr
+	ReverseTunnelAddr teleutils.NetAddr
 	WebProxyAddr      string
 	SSHProxyAddr      string
 	AuthorityDomain   string
@@ -79,14 +78,14 @@ type teleportProxyService struct {
 	leaderIP string
 }
 
-func (t *teleportProxyService) authServers() ([]utils.NetAddr, error) {
+func (t *teleportProxyService) authServers() ([]teleutils.NetAddr, error) {
 	servers, err := t.authClient.GetAuthServers()
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	authServers := make([]utils.NetAddr, 0, len(servers))
+	authServers := make([]teleutils.NetAddr, 0, len(servers))
 	for _, server := range servers {
-		serverAddr, err := utils.ParseAddr(server.GetAddr())
+		serverAddr, err := teleutils.ParseAddr(server.GetAddr())
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
@@ -417,14 +416,5 @@ func (t *teleportProxyService) getTLSConfig(clusterName string) (*tls.Config, er
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	tlsConfig := teleutils.TLSConfig(nil)
-	tlsCert, err := tls.X509KeyPair(keyPair.CertPEM, keyPair.KeyPEM)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(cert)
-	tlsConfig.Certificates = []tls.Certificate{tlsCert}
-	tlsConfig.RootCAs = pool
-	return tlsConfig, nil
+	return utils.MakeTLSClientConfig(keyPair.CertPEM, keyPair.KeyPEM, cert)
 }
