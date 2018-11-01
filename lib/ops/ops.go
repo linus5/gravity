@@ -35,6 +35,7 @@ import (
 	"github.com/gravitational/gravity/lib/schema"
 	"github.com/gravitational/gravity/lib/storage"
 	"github.com/gravitational/gravity/lib/utils"
+	"github.com/gravitational/license/authority"
 
 	"github.com/cloudflare/cfssl/csr"
 	"github.com/cloudflare/cfssl/signer"
@@ -88,6 +89,9 @@ type TeleportProxyService interface {
 
 	// GetCertAuthorities returns a list of cert authorities this proxy trusts
 	GetCertAuthorities(caType teleservices.CertAuthType) ([]teleservices.CertAuthority, error)
+
+	// GetCertAuthority returns the requested certificate authority
+	GetCertAuthority(id teleservices.CertAuthID, loadSigningKeys bool) (*authority.TLSKeyPair, error)
 
 	// GetPlanetLeaderIP returns the IP address of the active planet leader
 	GetPlanetLeaderIP() string
@@ -344,6 +348,8 @@ type SSHSignRequest struct {
 	// AllowedLogins is a list of linux allowed logins
 	// is set by access controller and is ignored from request
 	AllowedLogins []string `json:"-"`
+	// CSR is x509 CSR to sign with teleport's certificate
+	CSR []byte `json:"csr"`
 }
 
 // SSHSignResponse is a response to SSHSignRequest
@@ -352,6 +358,10 @@ type SSHSignResponse struct {
 	Cert []byte `json:"cert"`
 	// TrustedHostAuthorities is a list of trusted host authorities of sites
 	TrustedHostAuthorities []teleservices.CertAuthority `json:"trusted_authorities"`
+	// TLSCert is the signed x590 certificate
+	TLSCert []byte `json:"tls_cert"`
+	// CACert is the teleport TLS CA certificate
+	CACert []byte `json:"ca_cert"`
 }
 
 // ToRaw returns wire-friendly representation of the request
@@ -360,6 +370,8 @@ func (s *SSHSignResponse) ToRaw() (*SSHSignResponseRaw, error) {
 	raw := SSHSignResponseRaw{
 		Cert: s.Cert,
 		TrustedHostAuthorities: make([]json.RawMessage, 0, len(s.TrustedHostAuthorities)),
+		TLSCert:                s.TLSCert,
+		CACert:                 s.CACert,
 	}
 	for i := range s.TrustedHostAuthorities {
 		cert := s.TrustedHostAuthorities[i]
@@ -379,6 +391,10 @@ type SSHSignResponseRaw struct {
 	Cert []byte `json:"cert"`
 	// TrustedHostAuthorities is a list of trusted host authorities of sites
 	TrustedHostAuthorities []json.RawMessage `json:"trusted_authorities"`
+	// TLSCert is the signed x590 certificate
+	TLSCert []byte `json:"tls_cert"`
+	// CACert is the teleport TLS CA certificate
+	CACert []byte `json:"ca_cert"`
 }
 
 // ToNative converts back to request that has all interfaces inside
@@ -386,6 +402,8 @@ func (s *SSHSignResponseRaw) ToNative() (*SSHSignResponse, error) {
 	native := SSHSignResponse{
 		Cert: s.Cert,
 		TrustedHostAuthorities: make([]teleservices.CertAuthority, 0, len(s.TrustedHostAuthorities)),
+		TLSCert:                s.TLSCert,
+		CACert:                 s.CACert,
 	}
 	for i := range s.TrustedHostAuthorities {
 		ca, err := teleservices.GetCertAuthorityMarshaler().UnmarshalCertAuthority(s.TrustedHostAuthorities[i])

@@ -23,6 +23,7 @@ import (
 
 	"github.com/gravitational/gravity/lib/ops"
 	"github.com/gravitational/gravity/lib/storage"
+	"github.com/gravitational/license/authority"
 
 	teleauth "github.com/gravitational/teleport/lib/auth"
 	teleclient "github.com/gravitational/teleport/lib/client"
@@ -75,6 +76,10 @@ func (t *TestProxy) GenerateUserCert(pub []byte, user string, ttl time.Duration)
 }
 
 func (t *TestProxy) GetCertAuthorities(caType services.CertAuthType) ([]services.CertAuthority, error) {
+	return nil, nil
+}
+
+func (t *TestProxy) GetCertAuthority(id services.CertAuthID, withPrivateKeys bool) (*authority.TLSKeyPair, error) {
 	return nil, nil
 }
 

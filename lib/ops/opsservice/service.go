@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudflare/cfssl/signer"
 	appservice "github.com/gravitational/gravity/lib/app"
 	"github.com/gravitational/gravity/lib/checks"
 	"github.com/gravitational/gravity/lib/clients"
@@ -41,6 +42,7 @@ import (
 	"github.com/gravitational/gravity/lib/storage"
 	"github.com/gravitational/gravity/lib/users"
 	"github.com/gravitational/gravity/lib/utils"
+	"github.com/gravitational/license/authority"
 	"github.com/gravitational/teleport/lib/reversetunnel"
 
 	"github.com/docker/docker/pkg/archive"
@@ -744,9 +746,28 @@ func (o *Operator) SignSSHKey(req ops.SSHSignRequest) (*ops.SSHSignResponse, err
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+	cluster, err := o.GetLocalSite()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	ca, err := proxy.GetCertAuthority(teleservices.CertAuthID{
+		Type:       teleservices.HostCA,
+		DomainName: cluster.Domain,
+	}, true)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	tlsCert, err := authority.ProcessCSR(signer.SignRequest{
+		Request: string(req.CSR),
+	}, req.TTL, ca)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	return &ops.SSHSignResponse{
 		Cert: cert,
 		TrustedHostAuthorities: authorities,
+		TLSCert:                tlsCert,
+		CACert:                 ca.CertPEM,
 	}, nil
 }
 

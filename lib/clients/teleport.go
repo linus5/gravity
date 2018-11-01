@@ -45,11 +45,7 @@ func Teleport(operator ops.Operator, proxyHost string) (*client.TeleportClient, 
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	auth, err := authenticateWithTeleport(operator, cluster)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	tlsConfig, err := getTLSConfig(operator, cluster.Domain)
+	auth, tlsConfig, err := authenticateWithTeleport(operator, cluster)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -78,14 +74,21 @@ func TeleportProxy(ctx context.Context, operator ops.Operator, proxyHost string)
 	return teleport.ConnectToProxy(ctx)
 }
 
-func authenticateWithTeleport(operator ops.Operator, cluster *ops.Site) ([]ssh.AuthMethod, error) {
+func authenticateWithTeleport(operator ops.Operator, cluster *ops.Site) ([]ssh.AuthMethod, *tls.Config, error) {
 	keygen, err := native.New()
 	if err != nil {
-		return nil, trace.Wrap(err)
+		return nil, nil, trace.Wrap(err)
 	}
 	private, public, err := keygen.GenerateKeyPair("")
 	if err != nil {
-		return nil, trace.Wrap(err)
+		return nil, nil, trace.Wrap(err)
+	}
+	csr, key, err := authority.GenerateCSR(csr.CertificateRequest{
+		CN:    constants.OpsCenterUser,
+		Names: []csr.Name{{O: defaults.SystemAccountOrg}},
+	}, private)
+	if err != nil {
+		return nil, nil, trace.Wrap(err)
 	}
 	response, err := operator.SignSSHKey(ops.SSHSignRequest{
 		User:          constants.OpsCenterUser,
@@ -93,46 +96,56 @@ func authenticateWithTeleport(operator ops.Operator, cluster *ops.Site) ([]ssh.A
 		PublicKey:     public,
 		TTL:           defaults.CertTTL,
 		AllowedLogins: []string{defaults.SSHUser},
+		CSR:           csr,
 	})
 	if err != nil {
-		return nil, trace.Wrap(err)
+		return nil, nil, trace.Wrap(err)
 	}
 	signer, err := sshutils.NewSigner(private, response.Cert)
 	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
-}
-
-func getTLSConfig(operator ops.Operator, clusterName string) (*tls.Config, error) {
-	csr, key, err := authority.GenerateCSR(csr.CertificateRequest{
-		CN: constants.OpsCenterUser,
-		Names: []csr.Name{{
-			O: defaults.SystemAccountOrg,
-		}},
-	}, nil)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	response, err := operator.SignTLSKey(ops.TLSSignRequest{
-		AccountID:  defaults.SystemAccountID,
-		SiteDomain: clusterName,
-		CSR:        csr,
-	})
-	if err != nil {
-		return nil, trace.Wrap(err)
+		return nil, nil, trace.Wrap(err)
 	}
 	tlsConfig := teleutils.TLSConfig(nil)
-	tlsCert, err := tls.X509KeyPair(response.Cert, key)
+	tlsCert, err := tls.X509KeyPair(response.TLSCert, key)
 	if err != nil {
-		return nil, trace.Wrap(err)
+		return nil, nil, trace.Wrap(err)
 	}
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(response.CACert)
 	tlsConfig.Certificates = []tls.Certificate{tlsCert}
 	tlsConfig.RootCAs = pool
-	return tlsConfig, nil
+	return []ssh.AuthMethod{ssh.PublicKeys(signer)}, tlsConfig, nil
 }
+
+// func getTLSConfig(operator ops.Operator, clusterName string) (*tls.Config, error) {
+// 	csr, key, err := authority.GenerateCSR(csr.CertificateRequest{
+// 		CN: constants.OpsCenterUser,
+// 		Names: []csr.Name{{
+// 			O: defaults.SystemAccountOrg,
+// 		}},
+// 	}, nil)
+// 	if err != nil {
+// 		return nil, trace.Wrap(err)
+// 	}
+// 	response, err := operator.SignTLSKey(ops.TLSSignRequest{
+// 		AccountID:  defaults.SystemAccountID,
+// 		SiteDomain: clusterName,
+// 		CSR:        csr,
+// 	})
+// 	if err != nil {
+// 		return nil, trace.Wrap(err)
+// 	}
+// 	tlsConfig := teleutils.TLSConfig(nil)
+// 	tlsCert, err := tls.X509KeyPair(response.Cert, key)
+// 	if err != nil {
+// 		return nil, trace.Wrap(err)
+// 	}
+// 	pool := x509.NewCertPool()
+// 	pool.AppendCertsFromPEM(response.CACert)
+// 	tlsConfig.Certificates = []tls.Certificate{tlsCert}
+// 	tlsConfig.RootCAs = pool
+// 	return tlsConfig, nil
+// }
 
 func sshHostCheckerAcceptAny(hostId string, remote net.Addr, key ssh.PublicKey) error {
 	return nil

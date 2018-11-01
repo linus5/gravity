@@ -201,6 +201,18 @@ func (t *teleportProxyService) GetCertAuthorities(caType services.CertAuthType) 
 	return out, nil
 }
 
+// GetCertAuthority returns the requested certificate authority
+func (t *teleportProxyService) GetCertAuthority(id services.CertAuthID, loadSigningKeys bool) (*authority.TLSKeyPair, error) {
+	ca, err := t.authClient.GetCertAuthority(id, loadSigningKeys)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return &authority.TLSKeyPair{
+		KeyPEM:  ca.GetTLSKeyPairs()[0].Key,
+		CertPEM: ca.GetTLSKeyPairs()[0].Cert,
+	}, nil
+}
+
 // CertificateAuthorities returns a list of certificate
 // authorities proxy wants remote teleport sites to trust
 func (t *teleportProxyService) CertAuthorities(withPrivateKey bool) ([]services.CertAuthority, error) {
