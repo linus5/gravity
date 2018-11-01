@@ -984,6 +984,9 @@ func (s *site) getPlanetConfigPackage(
 		if mount.SkipIfMissing {
 			spec = fmt.Sprintf("--volume=%v:%v:skip", mount.Source, mount.Destination)
 		}
+		if mount.Recursive {
+			spec = fmt.Sprintf("%v:rec", spec)
+		}
 		args = append(args, spec)
 	}
 
@@ -993,6 +996,10 @@ func (s *site) getPlanetConfigPackage(
 	}
 	for _, device := range devices {
 		args = append(args, fmt.Sprintf("--device=%v", device.Format()))
+	}
+
+	for _, taint := range profile.Taints {
+		args = append(args, fmt.Sprintf("--taint=%v=%v:%v", taint.Key, taint.Value, taint.Effect))
 	}
 
 	reader, err := pack.GetConfigPackage(s.packages(), config.planetPackage, config.configPackage, args)
