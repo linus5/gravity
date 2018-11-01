@@ -18,6 +18,8 @@ package process
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net"
@@ -26,8 +28,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudflare/cfssl/csr"
 	"github.com/gravitational/gravity/lib/constants"
 	"github.com/gravitational/gravity/lib/defaults"
+	"github.com/gravitational/license/authority"
 
 	"github.com/gravitational/teleport/lib/auth"
 	teleauth "github.com/gravitational/teleport/lib/auth"
@@ -36,6 +40,7 @@ import (
 	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/sshutils"
 	"github.com/gravitational/teleport/lib/utils"
+	teleutils "github.com/gravitational/teleport/lib/utils"
 	"github.com/gravitational/trace"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
@@ -60,6 +65,7 @@ type teleportProxyConfig struct {
 	WebProxyAddr      string
 	SSHProxyAddr      string
 	AuthorityDomain   string
+	GetTLSConfig      func() ([]byte, []byte, error)
 }
 
 type teleportProxyService struct {
@@ -274,8 +280,11 @@ func (t *teleportProxyService) hostCertChecker() (ssh.HostKeyCallback, error) {
 }
 
 func (t *teleportProxyService) GetProxyClient(ctx context.Context, siteName string, labels map[string]string) (*teleclient.ProxyClient, error) {
-	log.Infof("GetServers(%v, %v)", siteName, labels)
 	hostChecker, err := t.hostCertChecker()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	tlsConfig, err := t.getTLSConfig(siteName)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -288,6 +297,7 @@ func (t *teleportProxyService) GetProxyClient(ctx context.Context, siteName stri
 		SSHProxyAddr:    t.cfg.SSHProxyAddr,
 		SiteName:        siteName,
 		HostKeyCallback: hostChecker,
+		TLS:             tlsConfig,
 		Env: map[string]string{
 			defaults.PathEnv: defaults.PathEnvVal,
 		},
@@ -309,6 +319,7 @@ func (t *teleportProxyService) GetProxyClient(ctx context.Context, siteName stri
 }
 
 func (t *teleportProxyService) GetServers(ctx context.Context, siteName string, labels map[string]string) ([]services.Server, error) {
+	log.Infof("GetServers(%v, %v)", siteName, labels)
 	proxyClient, err := t.GetProxyClient(ctx, siteName, labels)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -344,6 +355,10 @@ func (t *teleportProxyService) ExecuteCommand(ctx context.Context, siteName, nod
 	if err != nil {
 		return trace.Wrap(err, fmt.Sprintf("bad target node address: %v", nodeAddr))
 	}
+	tlsConfig, err := t.getTLSConfig(siteName)
+	if err != nil {
+		return trace.Wrap(err)
+	}
 	proxyClient, err := teleclient.NewClient(&teleclient.Config{
 		Username:        constants.OpsCenterUser,
 		AuthMethods:     t.getAuthMethods(),
@@ -356,9 +371,48 @@ func (t *teleportProxyService) ExecuteCommand(ctx context.Context, siteName, nod
 		Stdout:          out,
 		SiteName:        siteName,
 		HostKeyCallback: hostChecker,
+		TLS:             tlsConfig,
 		Env: map[string]string{
 			defaults.PathEnv: defaults.PathEnvVal,
 		},
 	})
 	return trace.Wrap(proxyClient.SSH(ctx, strings.Split(command, " "), false))
+}
+
+func (t *teleportProxyService) getTLSConfig(clusterName string) (*tls.Config, error) {
+	// cert, key, err := t.cfg.GetTLSConfig()
+	// if err != nil {
+	// 	return nil, trace.Wrap(err)
+	// }
+	ca, err := t.authClient.GetCertAuthority(services.CertAuthID{
+		Type:       services.HostCA,
+		DomainName: clusterName,
+	}, true)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	key := ca.GetTLSKeyPairs()[0].Key
+	cert := ca.GetTLSKeyPairs()[0].Cert
+	keyPair, err := authority.GenerateCertificate(csr.CertificateRequest{
+		CN: constants.OpsCenterUser,
+		Names: []csr.Name{{
+			O: defaults.SystemAccountOrg,
+		}},
+	}, &authority.TLSKeyPair{
+		KeyPEM:  key,
+		CertPEM: cert,
+	}, nil, defaults.CertTTL)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	tlsConfig := teleutils.TLSConfig(nil)
+	tlsCert, err := tls.X509KeyPair(keyPair.CertPEM, keyPair.KeyPEM)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(cert)
+	tlsConfig.Certificates = []tls.Certificate{tlsCert}
+	tlsConfig.RootCAs = pool
+	return tlsConfig, nil
 }

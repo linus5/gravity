@@ -969,6 +969,7 @@ func (p *Process) initService(ctx context.Context) (err error) {
 		ReverseTunnelAddr: proxyConfig.reverseTunnelAddr,
 		WebProxyAddr:      webProxyHost,
 		SSHProxyAddr:      sshProxyHost,
+		GetTLSConfig:      p.getProxyKeyPair,
 		// TODO(klizhentas) this means that it will only work if auth server
 		// and portal are on the same node, this is a bug
 		// to fix that we need to make sure that Auth server provides it's authority
@@ -1537,6 +1538,14 @@ func (p *Process) tryGetTLSConfig() (*tls.Config, error) {
 		return nil, trace.Wrap(err)
 	}
 	return config, nil
+}
+
+func (p *Process) getProxyKeyPair() ([]byte, []byte, error) {
+	client, err := tryGetPrivilegedKubeClient()
+	if err != nil {
+		return nil, nil, trace.Wrap(err)
+	}
+	return opsservice.GetClusterCertificate(client)
 }
 
 // newTLSConfig builds TLS configuration from the provided cert

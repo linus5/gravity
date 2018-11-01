@@ -19,21 +19,19 @@ package storage
 import (
 	"fmt"
 	"strings"
-
-	"github.com/gravitational/gravity/lib/constants"
 )
 
-// AssignKubernetesGroupsExpr constructs function expression used in rules specifications
-// that assigns kubernetes groups to the current user
-type AssignKubernetesGroupsExpr struct {
-	// Groups is a list of groups to assign
-	Groups StringsExpr
-}
+// // AssignKubernetesGroupsExpr constructs function expression used in rules specifications
+// // that assigns kubernetes groups to the current user
+// type AssignKubernetesGroupsExpr struct {
+// 	// Groups is a list of groups to assign
+// 	Groups StringsExpr
+// }
 
-// String returns function call expression used in rules
-func (a AssignKubernetesGroupsExpr) String() string {
-	return fmt.Sprintf(`%v(%v)`, constants.AssignKubernetesGroupsFnName, a.Groups)
-}
+// // String returns function call expression used in rules
+// func (a AssignKubernetesGroupsExpr) String() string {
+// 	return fmt.Sprintf(`%v(%v)`, constants.AssignKubernetesGroupsFnName, a.Groups)
+// }
 
 // Expr is an expression
 type Expr interface {

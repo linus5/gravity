@@ -202,13 +202,11 @@ func NewAdminRole() (teleservices.Role, error) {
 			NodeLabels: teleservices.Labels(map[string]teleutils.Strings{
 				teleservices.Wildcard: teleutils.Strings{teleservices.Wildcard},
 			}),
+			KubeGroups: GetAdminKubernetesGroups(),
 			Rules: []teleservices.Rule{
 				{
 					Resources: []string{teleservices.Wildcard},
 					Verbs:     []string{teleservices.Wildcard},
-					Actions: []string{storage.AssignKubernetesGroupsExpr{
-						Groups: GetAdminKubernetesGroups(),
-					}.String()},
 				},
 			},
 		},
@@ -266,6 +264,7 @@ func NewClusterAgentRole(name string, clusterName string) (teleservices.Role, er
 	return NewSystemRole(name, teleservices.RoleSpecV3{
 		Allow: teleservices.RoleConditions{
 			Namespaces: []string{defaults.Namespace},
+			KubeGroups: GetAdminKubernetesGroups(),
 			Rules: []teleservices.Rule{
 				{
 					Resources: []string{storage.KindCluster},
@@ -278,9 +277,6 @@ func NewClusterAgentRole(name string, clusterName string) (teleservices.Role, er
 						Left:  storage.ResourceNameExpr,
 						Right: storage.StringExpr(clusterName),
 					}.String(),
-					Actions: []string{storage.AssignKubernetesGroupsExpr{
-						Groups: GetAdminKubernetesGroups(),
-					}.String()},
 				},
 				{
 					Resources: []string{storage.KindApp},

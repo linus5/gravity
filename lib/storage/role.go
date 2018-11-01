@@ -207,7 +207,6 @@ func (r *RoleV2) V3() *teleservices.RoleV3 {
 		rule := teleservices.Rule{
 			Resources: []string{KindCluster},
 			Verbs:     []string{VerbConnect},
-			Actions:   []string{AssignKubernetesGroupsExpr{Groups: r.Spec.KubernetesGroups}.String()},
 		}
 		if len(r.Spec.Clusters) != 0 {
 			rule.Where = ContainsExpr{
@@ -215,6 +214,7 @@ func (r *RoleV2) V3() *teleservices.RoleV3 {
 				Right: ResourceNameExpr,
 			}.String()
 		}
+		role.Spec.Allow.KubeGroups = r.Spec.KubernetesGroups
 		role.Spec.Allow.Rules = append(role.Spec.Allow.Rules, rule)
 	}
 

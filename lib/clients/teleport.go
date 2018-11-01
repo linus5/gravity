@@ -18,6 +18,9 @@ package clients
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
 	"net"
 
 	"github.com/gravitational/gravity/lib/constants"
@@ -26,8 +29,12 @@ import (
 
 	"github.com/gravitational/teleport/lib/auth/native"
 	"github.com/gravitational/teleport/lib/client"
+	teledefaults "github.com/gravitational/teleport/lib/defaults"
 	"github.com/gravitational/teleport/lib/sshutils"
+	teleutils "github.com/gravitational/teleport/lib/utils"
 
+	"github.com/cloudflare/cfssl/csr"
+	"github.com/gravitational/license/authority"
 	"github.com/gravitational/trace"
 	"golang.org/x/crypto/ssh"
 )
@@ -42,15 +49,20 @@ func Teleport(operator ops.Operator, proxyHost string) (*client.TeleportClient, 
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+	tlsConfig, err := getTLSConfig(operator, cluster.Domain)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	return client.NewClient(&client.Config{
 		Username:        constants.OpsCenterUser,
 		AuthMethods:     auth,
 		SkipLocalAuth:   true,
 		HostLogin:       defaults.SSHUser,
-		WebProxyAddr:    proxyHost,
-		SSHProxyAddr:    proxyHost,
+		WebProxyAddr:    fmt.Sprintf("%v:%v", proxyHost, defaults.GravityServicePort),
+		SSHProxyAddr:    fmt.Sprintf("%v:%v", proxyHost, teledefaults.SSHProxyListenPort),
 		SiteName:        cluster.Domain,
 		HostKeyCallback: sshHostCheckerAcceptAny,
+		TLS:             tlsConfig,
 		Env: map[string]string{
 			defaults.PathEnv: defaults.PathEnvVal,
 		},
@@ -90,6 +102,36 @@ func authenticateWithTeleport(operator ops.Operator, cluster *ops.Site) ([]ssh.A
 		return nil, trace.Wrap(err)
 	}
 	return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
+}
+
+func getTLSConfig(operator ops.Operator, clusterName string) (*tls.Config, error) {
+	csr, key, err := authority.GenerateCSR(csr.CertificateRequest{
+		CN: constants.OpsCenterUser,
+		Names: []csr.Name{{
+			O: defaults.SystemAccountOrg,
+		}},
+	}, nil)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	response, err := operator.SignTLSKey(ops.TLSSignRequest{
+		AccountID:  defaults.SystemAccountID,
+		SiteDomain: clusterName,
+		CSR:        csr,
+	})
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	tlsConfig := teleutils.TLSConfig(nil)
+	tlsCert, err := tls.X509KeyPair(response.Cert, key)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(response.CACert)
+	tlsConfig.Certificates = []tls.Certificate{tlsCert}
+	tlsConfig.RootCAs = pool
+	return tlsConfig, nil
 }
 
 func sshHostCheckerAcceptAny(hostId string, remote net.Addr, key ssh.PublicKey) error {

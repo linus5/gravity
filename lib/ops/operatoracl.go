@@ -42,7 +42,7 @@ import (
 
 // OperatorWithACL retruns new instance of the Operator interface
 // that is checking every action against this username privileges
-func OperatorWithACL(operator Operator, users users.Users, user storage.User, checker teleservices.AccessChecker) *OperatorACL {
+func OperatorWithACL(operator Operator, users users.Identity, user storage.User, checker teleservices.AccessChecker) *OperatorACL {
 	return &OperatorACL{
 		operator: operator,
 		users:    users,
@@ -58,7 +58,7 @@ type OperatorACL struct {
 	isOneTimeLink bool
 	backend       storage.Backend
 	operator      Operator
-	users         users.Users
+	users         users.Identity
 	username      string
 	checker       teleservices.AccessChecker
 	user          storage.User
@@ -787,10 +787,20 @@ func (o *OperatorACL) SignTLSKey(req TLSSignRequest) (*TLSSignResponse, error) {
 		return nil, trace.Wrap(err)
 	}
 
-	// we are expecting some groups to be assigned
-	if len(ctx.KubernetesGroups) == 0 {
-		return nil, trace.AccessDenied("access to cluster %q is denied: no kubernetes groups are allowed for user %q", req.SiteDomain, o.user.GetName())
+	roles, err := teleservices.FetchRoles(ctx.User.GetRoles(), o.users, ctx.User.GetTraits())
+	if err != nil {
+		return nil, trace.Wrap(err)
 	}
+
+	kubernetesGroups, err := roles.CheckKubeGroups(req.TTL)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	// // we are expecting some groups to be assigned
+	// if len(ctx.KubernetesGroups) == 0 {
+	// 	return nil, trace.AccessDenied("access to cluster %q is denied: no kubernetes groups are allowed for user %q", req.SiteDomain, o.user.GetName())
+	// }
 
 	block, _ := pem.Decode(req.CSR)
 	if block == nil {
@@ -805,14 +815,15 @@ func (o *OperatorACL) SignTLSKey(req TLSSignRequest) (*TLSSignResponse, error) {
 	switch certRequest.Subject.CommonName {
 	case o.username, defaults.KubeForwarderUser:
 	default:
-		return nil, trace.AccessDenied("expected common name %v, got %v instead",
-			o.username, certRequest.Subject.CommonName)
+		if err := o.currentUserActions(o.username, teleservices.VerbCreate); err != nil {
+			return nil, trace.Wrap(err)
+		}
 	}
 
 	req.Subject = &signer.Subject{
 		CN: certRequest.Subject.CommonName,
 	}
-	for _, group := range ctx.KubernetesGroups {
+	for _, group := range kubernetesGroups {
 		req.Subject.Names = append(req.Subject.Names, csr.Name{O: group})
 	}
 
