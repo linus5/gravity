@@ -44,11 +44,12 @@ import (
 // that is checking every action against this username privileges
 func OperatorWithACL(operator Operator, users users.Identity, user storage.User, checker teleservices.AccessChecker) *OperatorACL {
 	return &OperatorACL{
-		operator: operator,
-		users:    users,
-		user:     user,
-		username: user.GetName(),
-		checker:  checker,
+		operator:    operator,
+		users:       users,
+		user:        user,
+		username:    user.GetName(),
+		checker:     checker,
+		FieldLogger: log.WithField(trace.Component, "acl"),
 	}
 }
 
@@ -62,6 +63,7 @@ type OperatorACL struct {
 	username      string
 	checker       teleservices.AccessChecker
 	user          storage.User
+	log.FieldLogger
 }
 
 type localOperator interface {
@@ -76,8 +78,7 @@ func (o *OperatorACL) context() *users.Context {
 func (o *OperatorACL) clusterContext(clusterName string) (*users.Context, storage.Cluster, error) {
 	site, err := o.operator.GetSiteByDomain(clusterName)
 	if err != nil {
-		log.Errorf("falling back to local operator, get site '%v' error: %v", clusterName, trace.DebugReport(err))
-
+		o.Warnf("Falling back to local operator: %v.", err)
 		localOperator, ok := o.operator.(localOperator)
 		if !ok {
 			return nil, nil, trace.Wrap(err)

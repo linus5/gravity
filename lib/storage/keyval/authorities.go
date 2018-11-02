@@ -177,8 +177,8 @@ func (b *backend) CompareAndSwapCertAuthority(new, existing teleservices.CertAut
 		return trace.Wrap(err)
 	}
 	ttl := b.ttl(new.Expiry())
-	var out teleservices.CertAuthority
-	err = b.compareAndSwap(b.key(authoritiesP, string(new.GetType()), new.GetClusterName()), newData, existingData, &out, ttl)
+	var outData []byte
+	err = b.compareAndSwapBytes(b.key(authoritiesP, string(new.GetType()), new.GetClusterName()), newData, existingData, &outData, ttl)
 	if err != nil {
 		if trace.IsCompareFailed(err) {
 			return trace.CompareFailed("cluster %v settings have been updated, try again", new.GetClusterName())

@@ -375,7 +375,7 @@ func (s *SSHSignResponse) ToRaw() (*SSHSignResponseRaw, error) {
 	}
 	for i := range s.TrustedHostAuthorities {
 		cert := s.TrustedHostAuthorities[i]
-		data, err := teleservices.GetCertAuthorityMarshaler().MarshalCertAuthority(cert, teleservices.WithVersion(teleservices.V1))
+		data, err := teleservices.GetCertAuthorityMarshaler().MarshalCertAuthority(cert)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
