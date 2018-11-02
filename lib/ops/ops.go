@@ -63,6 +63,9 @@ type TeleportProxyService interface {
 	// site name
 	DeleteAuthority(domainName string) error
 
+	// DeleteRemoteCluster deletes remote cluster resource
+	DeleteRemoteCluster(clusterName string) error
+
 	// TrustCertAuthority sets up trust for certificate authority
 	TrustCertAuthority(teleservices.CertAuthority) error
 

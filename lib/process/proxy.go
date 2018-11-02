@@ -27,12 +27,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloudflare/cfssl/csr"
 	"github.com/gravitational/gravity/lib/constants"
 	"github.com/gravitational/gravity/lib/defaults"
 	"github.com/gravitational/gravity/lib/utils"
-	"github.com/gravitational/license/authority"
 
+	"github.com/cloudflare/cfssl/csr"
+	"github.com/gravitational/license/authority"
 	"github.com/gravitational/teleport/lib/auth"
 	teleauth "github.com/gravitational/teleport/lib/auth"
 	"github.com/gravitational/teleport/lib/auth/native"
@@ -250,6 +250,11 @@ func (t *teleportProxyService) DeleteAuthority(domainName string) error {
 		return trace.Wrap(err)
 	}
 	return nil
+}
+
+// DeleteRemoteCluster deletes remote cluster resource
+func (t *teleportProxyService) DeleteRemoteCluster(clusterName string) error {
+	return t.authClient.DeleteRemoteCluster(clusterName)
 }
 
 // Start trusting certificate authority

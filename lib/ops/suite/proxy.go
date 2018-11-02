@@ -62,6 +62,11 @@ func (t *TestProxy) DeleteAuthority(domainName string) error {
 	return nil
 }
 
+// DeleteRemoteCluster deletes remote cluster resource
+func (t *TestProxy) DeleteRemoteCluster(clusterName string) error {
+	return nil
+}
+
 // StartCertAuthority sets up trust for certificate authority
 func (t *TestProxy) TrustCertAuthority(services.CertAuthority) error {
 	return nil
