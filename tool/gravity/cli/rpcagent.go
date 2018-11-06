@@ -30,6 +30,7 @@ import (
 	"github.com/gravitational/gravity/lib/fsm"
 	"github.com/gravitational/gravity/lib/loc"
 	"github.com/gravitational/gravity/lib/localenv"
+	"github.com/gravitational/gravity/lib/ops"
 	"github.com/gravitational/gravity/lib/pack"
 	"github.com/gravitational/gravity/lib/rpc"
 	pb "github.com/gravitational/gravity/lib/rpc/proto"
@@ -127,6 +128,54 @@ var agentFunctions map[string]agentFunc = map[string]agentFunc{
 	constants.RpcAgentUpgradeFunction: executeAutomaticUpgrade,
 }
 
+// isOldTeleport returns true if the provided cluster runs an legacy version of Teleport
+func isOldTeleport(cluster *ops.Site) (bool, error) {
+	teleportPackage, err := cluster.App.Manifest.Dependencies.ByName(constants.TeleportPackage)
+	if err != nil {
+		return false, trace.Wrap(err)
+	}
+	teleportVer, err := teleportPackage.SemVer()
+	if err != nil {
+		return false, trace.Wrap(err)
+	}
+	return teleportVer.Major < 3, nil
+}
+
+func deployAgentsLegacy(env *localenv.LocalEnvironment, cluster *ops.Site, leaderParams []string) error {
+	gravityPackage, err := cluster.App.Manifest.Dependencies.ByName(constants.GravityPackage)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	log.Infof("Deploying agents using %v.", gravityPackage)
+	// download gravity binary from local cluster
+	packages, err := env.ClusterPackages()
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	_, reader, err := packages.ReadPackage(*gravityPackage)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	defer reader.Close()
+	binary, err := os.OpenFile("/tmp/gravity", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	_, err = io.Copy(binary, reader)
+	if err != nil {
+		binary.Close()
+		return trace.Wrap(err)
+	}
+	binary.Close()
+	args := append([]string{"/tmp/gravity", "agent", "deploy"}, leaderParams...)
+	out, err := utils.RunCommand(context.TODO(), log, args...)
+	if err != nil {
+		return trace.Wrap(err, "%s", string(out))
+	}
+	log.Infof("Deployed agents: %s.", string(out))
+	return nil
+}
+
 func rpcAgentDeploy(env *localenv.LocalEnvironment, leaderParams []string) error {
 	ctx := context.TODO()
 
@@ -143,6 +192,15 @@ func rpcAgentDeploy(env *localenv.LocalEnvironment, leaderParams []string) error
 	cluster, err := operator.GetLocalSite()
 	if err != nil {
 		return trace.Wrap(err)
+	}
+
+	oldTeleport, err := isOldTeleport(cluster)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	if oldTeleport {
+		return deployAgentsLegacy(env, cluster, leaderParams)
 	}
 
 	teleportClient, err := env.TeleportClient(constants.Localhost)
@@ -247,20 +305,45 @@ func deployAgents(ctx context.Context, env *localenv.LocalEnvironment, req deplo
 	return clientCreds, nil
 }
 
-func deployUpdateAgents(ctx context.Context, localEnv, updateEnv *localenv.LocalEnvironment, req deployAgentsRequest) error {
+func deployUpdateAgents(ctx context.Context, localEnv, updateEnv *localenv.LocalEnvironment, clusterEnv *localenv.ClusterEnvironment, cluster *ops.Site, manual bool) error {
+	oldTeleport, err := isOldTeleport(cluster)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	if oldTeleport {
+		return deployAgentsLegacy(localEnv, cluster, []string{constants.RpcAgentUpgradeFunction})
+	}
+
+	teleportClient, err := localEnv.TeleportClient(constants.Localhost)
+	if err != nil {
+		return trace.Wrap(err, "failed to create a teleport client")
+	}
+
+	proxy, err := teleportClient.ConnectToProxy(ctx)
+	if err != nil {
+		return trace.Wrap(err, "failed to connect to teleport proxy")
+	}
+
+	req := deployAgentsRequest{
+		clusterState: cluster.ClusterState,
+		clusterName:  cluster.Domain,
+		clusterEnv:   clusterEnv,
+		proxy:        proxy,
+	}
+
+	if !manual {
+		req.leaderParams = []string{constants.RpcAgentUpgradeFunction}
+		// attempt to schedule the master agent on this node but do not
+		// treat the failure to do so as critical
+		req.leader, err = findLocalServer(*cluster)
+		if err != nil {
+			log.Warnf("Failed to determine local node: %v.",
+				trace.DebugReport(err))
+		}
+	}
+
 	deployReq, err := newDeployAgentsRequest(ctx, req)
-	if err != nil {
-		return trace.Wrap(err)
-	}
-
-	clientCreds, err := getClientCredentials(ctx, req.clusterEnv.ClusterPackages, deployReq.SecretsPackage)
-	if err != nil {
-		return trace.Wrap(err)
-	}
-
-	// Operation plan initialization requires access to TLS RPC credentials
-	// generated above
-	plan, err := update.InitOperationPlan(ctx, updateEnv, req.clusterEnv)
 	if err != nil {
 		return trace.Wrap(err)
 	}
@@ -268,11 +351,6 @@ func deployUpdateAgents(ctx context.Context, localEnv, updateEnv *localenv.Local
 	err = rpc.DeployAgents(ctx, *deployReq)
 	if err != nil {
 		return trace.Wrap(err, "failed to deploy agents")
-	}
-
-	err = update.SyncOperationPlanToCluster(ctx, *plan, clientCreds)
-	if err != nil {
-		return trace.Wrap(err)
 	}
 
 	return nil

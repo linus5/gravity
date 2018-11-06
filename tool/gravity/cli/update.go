@@ -23,12 +23,14 @@ import (
 	appservice "github.com/gravitational/gravity/lib/app"
 	"github.com/gravitational/gravity/lib/constants"
 	"github.com/gravitational/gravity/lib/defaults"
+	"github.com/gravitational/gravity/lib/fsm"
 	"github.com/gravitational/gravity/lib/httplib"
 	"github.com/gravitational/gravity/lib/loc"
 	"github.com/gravitational/gravity/lib/localenv"
 	"github.com/gravitational/gravity/lib/ops"
 	"github.com/gravitational/gravity/lib/pack"
 	"github.com/gravitational/gravity/lib/schema"
+	"github.com/gravitational/gravity/lib/update"
 
 	"github.com/gravitational/trace"
 )
@@ -69,16 +71,6 @@ func updateTrigger(
 		return trace.Wrap(err)
 	}
 
-	teleportClient, err := localEnv.TeleportClient(constants.Localhost)
-	if err != nil {
-		return trace.Wrap(err, "failed to create a teleport client")
-	}
-
-	proxy, err := teleportClient.ConnectToProxy(context.TODO())
-	if err != nil {
-		return trace.Wrap(err, "failed to connect to teleport proxy")
-	}
-
 	app, err := checkForUpdate(localEnv, operator, cluster, appPackage)
 	if err != nil {
 		return trace.Wrap(err)
@@ -112,26 +104,23 @@ func updateTrigger(
 		}
 	}()
 
-	req := deployAgentsRequest{
-		clusterState: cluster.ClusterState,
-		clusterName:  cluster.Domain,
-		clusterEnv:   clusterEnv,
-		proxy:        proxy,
+	err = deployUpdateAgents(context.TODO(), localEnv, upgradeEnv, clusterEnv, cluster, manual)
+	if err != nil {
+		return trace.Wrap(err)
 	}
 
-	if !manual {
-		req.leaderParams = []string{constants.RpcAgentUpgradeFunction}
-		// attempt to schedule the master agent on this node but do not
-		// treat the failure to do so as critical
-		req.leader, err = findLocalServer(*cluster)
-		if err != nil {
-			log.Warnf("Failed to determine local node: %v.",
-				trace.DebugReport(err))
-		}
+	// client credentials should have been unpacked by the above deploy agent command
+	clientCreds, err := fsm.GetClientCredentials()
+	if err != nil {
+		return trace.Wrap(err)
 	}
 
-	ctx := context.TODO()
-	err = deployUpdateAgents(ctx, localEnv, upgradeEnv, req)
+	plan, err := update.InitOperationPlan(context.TODO(), upgradeEnv, clusterEnv)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	err = update.SyncOperationPlanToCluster(context.TODO(), *plan, clientCreds)
 	if err != nil {
 		return trace.Wrap(err)
 	}
@@ -141,15 +130,15 @@ func updateTrigger(
 		return nil
 	}
 
-	localEnv.Printf("update operation (%v) has been started\n", opKey.OperationID)
+	localEnv.Printf("Upgrade operation (%v) has been started.\n", opKey.OperationID)
 
 	if !manual {
-		localEnv.Println("the cluster is updating in background")
+		localEnv.Println("The cluster is upgrading in the background.")
 		return nil
 	}
 
 	localEnv.Println(`
-The update operation has been created in manual mode.
+The upgrade operation has been created in manual mode.
 
 To view the operation plan, run:
 

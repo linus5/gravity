@@ -104,9 +104,12 @@ func authenticateWithTeleport(operator ops.Operator, cluster *ops.Site) ([]ssh.A
 	if err != nil {
 		return nil, nil, trace.Wrap(err)
 	}
-	tlsConfig, err := utils.MakeTLSClientConfig(response.TLSCert, key, response.CACert)
-	if err != nil {
-		return nil, nil, trace.Wrap(err)
+	var tlsConfig *tls.Config
+	if len(response.TLSCert) != 0 {
+		tlsConfig, err = utils.MakeTLSClientConfig(response.TLSCert, key, response.CACert)
+		if err != nil {
+			return nil, nil, trace.Wrap(err)
+		}
 	}
 	return []ssh.AuthMethod{ssh.PublicKeys(signer)}, tlsConfig, nil
 }
