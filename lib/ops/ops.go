@@ -719,6 +719,9 @@ type Updates interface {
 	// RotatePlanetConfig rotates planet configuration package for the server specified in the request
 	RotatePlanetConfig(RotatePlanetConfigRequest) (*RotatePackageResponse, error)
 
+	// RotateTeleportConfig rotates teleport configuration package for the server specified in the request
+	RotateTeleportConfig(RotatePlanetConfigRequest) (masterConfig *RotatePackageResponse, nodeConfig *RotatePackageResponse, err error)
+
 	// ConfigureNode prepares the node for the upgrade
 	ConfigureNode(ConfigureNodeRequest) error
 }
@@ -791,7 +794,7 @@ type RotatePlanetConfigRequest struct {
 	// Server is the server to rotate configuration for
 	Server storage.Server `json:"server"`
 	// Servers is all cluster servers
-	Servers []storage.Server `json:"servers"`
+	Servers storage.Servers `json:"servers"`
 }
 
 // SiteKey returns a cluster key from this request

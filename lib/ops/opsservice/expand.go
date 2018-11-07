@@ -154,9 +154,25 @@ func (s *site) validateExpand(op *ops.SiteOperation, req *ops.OperationUpdateReq
 	return trace.Wrap(err)
 }
 
+func (s *site) getCertAuthorities(withPrivateKeys bool) (authorities []teleservices.CertAuthority, err error) {
+	hostAuthorities, err := s.service.cfg.Users.GetCertAuthorities(teleservices.HostCA, withPrivateKeys)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	userAuthorities, err := s.service.cfg.Users.GetCertAuthorities(teleservices.UserCA, withPrivateKeys)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	for _, a := range append(hostAuthorities, userAuthorities...) {
+		if a.GetClusterName() == s.domainName {
+			authorities = append(authorities, a)
+		}
+	}
+	return authorities, nil
+}
+
 func (s *site) getTeleportSecrets() (*teleportSecrets, error) {
-	withPrivateKey := true
-	authorities, err := s.teleport().CertAuthorities(withPrivateKey)
+	authorities, err := s.getCertAuthorities(true)
 	if err != nil {
 		return nil, trace.Wrap(err, "failed to query cert authorities")
 	}

@@ -1039,18 +1039,19 @@ type planetConfig struct {
 	configPackage loc.Locator
 }
 
-func (s *site) configureTeleportMaster(ctx *operationContext, secrets *teleportSecrets, master *ProvisionedServer) error {
+func (s *site) getTeleportMasterConfig(ctx *operationContext, secrets *teleportSecrets, master *ProvisionedServer) (*ops.RotatePackageResponse, error) {
 	configPackage, err := s.teleportMasterConfigPackage(master)
 	if err != nil {
-		return trace.Wrap(err)
+		return nil, trace.Wrap(err)
 	}
 
 	fileConf := &telecfg.FileConfig{}
 
 	// trust host and user keys of our portal
-	proxyAuthorities, err := s.teleport().CertAuthorities(false)
+	// proxyAuthorities, err := s.teleport().CertAuthorities(false)
+	proxyAuthorities, err := s.getCertAuthorities(false)
 	if err != nil {
-		return trace.Wrap(err)
+		return nil, trace.Wrap(err)
 	}
 	fileConf.Auth.Authorities = make([]telecfg.Authority, 0, len(proxyAuthorities)+2)
 
@@ -1106,7 +1107,7 @@ func (s *site) configureTeleportMaster(ctx *operationContext, secrets *teleportS
 		TLSCAFile:   filepath.Join(secretsDir, "root.cert"),
 	})
 	if err != nil {
-		return trace.Wrap(err)
+		return nil, trace.Wrap(err)
 	}
 	fileConf.Storage.Params = params
 
@@ -1123,7 +1124,7 @@ func (s *site) configureTeleportMaster(ctx *operationContext, secrets *teleportS
 
 	joinToken, err := s.service.GetExpandToken(s.key)
 	if err != nil {
-		return trace.Wrap(err)
+		return nil, trace.Wrap(err)
 	}
 
 	// turn on auth service
@@ -1140,25 +1141,39 @@ func (s *site) configureTeleportMaster(ctx *operationContext, secrets *teleportS
 
 	bytes, err := yaml.Marshal(fileConf)
 	if err != nil {
-		return trace.Wrap(err)
+		return nil, trace.Wrap(err)
 	}
 
 	args := []string{
 		fmt.Sprintf("--config-string=%v", base64.StdEncoding.EncodeToString(bytes)),
 	}
 
-	err = pack.ConfigurePackage(
-		s.packages(), s.teleportPackage, *configPackage, args, map[string]string{
+	reader, err := pack.GetConfigPackage(s.packages(), s.teleportPackage, *configPackage, args)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	return &ops.RotatePackageResponse{
+		Locator: *configPackage,
+		Reader:  reader,
+		Labels: map[string]string{
 			pack.PurposeLabel:     pack.PurposeTeleportConfig,
 			pack.AdvertiseIPLabel: master.AdvertiseIP,
 			pack.OperationIDLabel: ctx.operation.ID,
-		})
+			pack.ConfigLabel:      s.teleportPackage.ZeroVersion().String(),
+		},
+	}, nil
+}
+
+func (s *site) configureTeleportMaster(ctx *operationContext, secrets *teleportSecrets, master *ProvisionedServer) error {
+	resp, err := s.getTeleportMasterConfig(ctx, secrets, master)
 	if err != nil {
 		return trace.Wrap(err)
 	}
-
-	master.PackageSet.AddArchivePackage(*configPackage, nil)
-
+	_, err = s.packages().CreatePackage(resp.Locator, resp.Reader, pack.WithLabels(resp.Labels))
+	if err != nil {
+		return trace.Wrap(err)
+	}
 	return nil
 }
 
@@ -1177,20 +1192,20 @@ func toObject(in interface{}) (map[string]interface{}, error) {
 
 func (s *site) teleportMasterConfigPackage(master remoteServer) (*loc.Locator, error) {
 	configPackage, err := loc.ParseLocator(
-		fmt.Sprintf("%v/%v:0.0.1-%v", s.siteRepoName(), constants.TeleportMasterConfigPackage,
-			PackageSuffix(master, s.domainName)))
+		fmt.Sprintf("%v/%v:0.0.%v-%v", s.siteRepoName(), constants.TeleportMasterConfigPackage,
+			time.Now().UTC().Unix(), PackageSuffix(master, s.domainName)))
 	return configPackage, trace.Wrap(err)
 }
 
-func (s *site) configureTeleportNode(ctx *operationContext, masterIP string, node *ProvisionedServer) error {
+func (s *site) getTeleportNodeConfig(ctx *operationContext, masterIP string, node *ProvisionedServer) (*ops.RotatePackageResponse, error) {
 	configPackage, err := s.teleportNodeConfigPackage(node)
 	if err != nil {
-		return trace.Wrap(err)
+		return nil, trace.Wrap(err)
 	}
 
 	joinToken, err := s.service.GetExpandToken(s.key)
 	if err != nil {
-		return trace.Wrap(err)
+		return nil, trace.Wrap(err)
 	}
 
 	fileConf := &telecfg.FileConfig{}
@@ -1248,33 +1263,46 @@ func (s *site) configureTeleportNode(ctx *operationContext, masterIP string, nod
 
 	bytes, err := yaml.Marshal(fileConf)
 	if err != nil {
-		return trace.Wrap(err)
+		return nil, trace.Wrap(err)
 	}
 
 	args := []string{
 		fmt.Sprintf("--config-string=%v", base64.StdEncoding.EncodeToString(bytes)),
 	}
 
-	err = pack.ConfigurePackage(
-		s.packages(), s.teleportPackage, *configPackage, args, map[string]string{
+	reader, err := pack.GetConfigPackage(s.packages(), s.teleportPackage, *configPackage, args)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	return &ops.RotatePackageResponse{
+		Locator: *configPackage,
+		Reader:  reader,
+		Labels: map[string]string{
 			pack.PurposeLabel:     pack.PurposeTeleportConfig,
 			pack.AdvertiseIPLabel: node.AdvertiseIP,
 			pack.OperationIDLabel: ctx.operation.ID,
-		})
+			pack.ConfigLabel:      s.teleportPackage.ZeroVersion().String(),
+		},
+	}, nil
+}
+
+func (s *site) configureTeleportNode(ctx *operationContext, masterIP string, node *ProvisionedServer) error {
+	resp, err := s.getTeleportNodeConfig(ctx, masterIP, node)
 	if err != nil {
 		return trace.Wrap(err)
 	}
-
-	node.PackageSet.AddArchivePackage(s.teleportPackage, map[string]string{pack.InstalledLabel: pack.InstalledLabel})
-	node.PackageSet.AddArchivePackage(*configPackage, map[string]string{pack.ConfigLabel: s.teleportPackage.ZeroVersion().String()})
-
+	_, err = s.packages().CreatePackage(resp.Locator, resp.Reader, pack.WithLabels(resp.Labels))
+	if err != nil {
+		return trace.Wrap(err)
+	}
 	return nil
 }
 
 func (s *site) teleportNodeConfigPackage(node remoteServer) (*loc.Locator, error) {
 	configPackage, err := loc.ParseLocator(
-		fmt.Sprintf("%v/%v:0.0.1-%v", s.siteRepoName(), constants.TeleportNodeConfigPackage,
-			PackageSuffix(node, s.domainName)))
+		fmt.Sprintf("%v/%v:0.0.%v-%v", s.siteRepoName(), constants.TeleportNodeConfigPackage,
+			time.Now().UTC().Unix(), PackageSuffix(node, s.domainName)))
 	return configPackage, trace.Wrap(err)
 }
 

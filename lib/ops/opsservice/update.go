@@ -28,6 +28,7 @@ import (
 	"github.com/gravitational/gravity/lib/state"
 	"github.com/gravitational/gravity/lib/storage"
 	"github.com/gravitational/gravity/lib/utils"
+	"github.com/gravitational/teleport"
 
 	"github.com/gravitational/trace"
 	"github.com/pborman/uuid"
@@ -36,13 +37,7 @@ import (
 
 // RotateSecrets rotates secrets package for the server specified in the request
 func (o *Operator) RotateSecrets(req ops.RotateSecretsRequest) (*ops.RotatePackageResponse, error) {
-	node := &ProvisionedServer{
-		PackageSet: NewPackageSet(),
-		Server:     req.Server,
-		Profile: schema.NodeProfile{
-			ServiceRole: schema.ServiceRole(req.Server.ClusterRole),
-		},
-	}
+	node := newProvisionedServer(req.Server)
 
 	op, err := ops.GetCompletedInstallOperation(req.SiteKey(), o)
 	if err != nil {
@@ -65,6 +60,55 @@ func (o *Operator) RotateSecrets(req ops.RotateSecretsRequest) (*ops.RotatePacka
 	}
 
 	return resp, nil
+}
+
+// RotateTeleportConfig rotates teleport configuration for the specified server
+func (o *Operator) RotateTeleportConfig(req ops.RotatePlanetConfigRequest) (masterConfig *ops.RotatePackageResponse, nodeConfig *ops.RotatePackageResponse, err error) {
+	operation, err := o.GetSiteOperation(req.SiteOperationKey())
+	if err != nil {
+		return nil, nil, trace.Wrap(err)
+	}
+
+	cluster, err := o.openSite(req.SiteKey())
+	if err != nil {
+		return nil, nil, trace.Wrap(err)
+	}
+
+	ctx, err := cluster.newOperationContext(*operation)
+	if err != nil {
+		return nil, nil, trace.Wrap(err)
+	}
+
+	secrets, err := cluster.getTeleportSecrets()
+	if err != nil {
+		return nil, nil, trace.Wrap(err)
+	}
+
+	masters := req.Servers.Masters()
+	if len(masters) == 0 {
+		return nil, nil, trace.NotFound("no masters in the request: %#v", req)
+	}
+
+	provisionedServer := newProvisionedServer(req.Server)
+
+	if provisionedServer.ClusterRole == string(schema.ServiceRoleMaster) {
+		masterConfig, err = cluster.getTeleportMasterConfig(ctx, secrets, provisionedServer)
+		if err != nil {
+			return nil, nil, trace.Wrap(err)
+		}
+	}
+
+	err = cluster.configureTeleportKeyPair(secrets, provisionedServer, teleport.RoleNode)
+	if err != nil {
+		return nil, nil, trace.Wrap(err)
+	}
+
+	nodeConfig, err = cluster.getTeleportNodeConfig(ctx, masters[0].AdvertiseIP, provisionedServer)
+	if err != nil {
+		return nil, nil, trace.Wrap(err)
+	}
+
+	return masterConfig, nodeConfig, nil
 }
 
 // RotatePlanetConfig rotates planet configuration package for the server specified in the request

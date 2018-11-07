@@ -221,7 +221,7 @@ func checkForUpdate(env *localenv.LocalEnvironment, operator ops.Operator, site 
 		return nil, trace.Wrap(err)
 	}
 
-	env.Printf("updating %v from %v to %v\n",
+	env.Printf("Upgrading application %v from %v to %v.\n",
 		update.Package.Name, site.App.Package.Version, update.Package.Version)
 
 	return update, nil

@@ -27,6 +27,16 @@ import (
 
 type provisionedServers []*ProvisionedServer
 
+func newProvisionedServer(server storage.Server) *ProvisionedServer {
+	return &ProvisionedServer{
+		PackageSet: NewPackageSet(),
+		Server:     server,
+		Profile: schema.NodeProfile{
+			ServiceRole: schema.ServiceRole(server.ClusterRole),
+		},
+	}
+}
+
 // InitialCluster combines the addresses of all servers in the specified cluster plan
 // into a string of domain:addr key/value pairs.
 func (p provisionedServers) InitialCluster(domain string) string {

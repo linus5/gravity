@@ -194,14 +194,14 @@ func rpcAgentDeploy(env *localenv.LocalEnvironment, leaderParams []string) error
 		return trace.Wrap(err)
 	}
 
-	oldTeleport, err := isOldTeleport(cluster)
-	if err != nil {
-		return trace.Wrap(err)
-	}
+	// oldTeleport, err := isOldTeleport(cluster)
+	// if err != nil {
+	// 	return trace.Wrap(err)
+	// }
 
-	if oldTeleport {
-		return deployAgentsLegacy(env, cluster, leaderParams)
-	}
+	// if oldTeleport {
+	// 	return deployAgentsLegacy(env, cluster, leaderParams)
+	// }
 
 	teleportClient, err := env.TeleportClient(constants.Localhost)
 	if err != nil {
@@ -306,14 +306,14 @@ func deployAgents(ctx context.Context, env *localenv.LocalEnvironment, req deplo
 }
 
 func deployUpdateAgents(ctx context.Context, localEnv, updateEnv *localenv.LocalEnvironment, clusterEnv *localenv.ClusterEnvironment, cluster *ops.Site, manual bool) error {
-	oldTeleport, err := isOldTeleport(cluster)
-	if err != nil {
-		return trace.Wrap(err)
-	}
+	// oldTeleport, err := isOldTeleport(cluster)
+	// if err != nil {
+	// 	return trace.Wrap(err)
+	// }
 
-	if oldTeleport {
-		return deployAgentsLegacy(localEnv, cluster, []string{constants.RpcAgentUpgradeFunction})
-	}
+	// if oldTeleport {
+	// 	return deployAgentsLegacy(localEnv, cluster, []string{constants.RpcAgentUpgradeFunction})
+	// }
 
 	teleportClient, err := localEnv.TeleportClient(constants.Localhost)
 	if err != nil {
